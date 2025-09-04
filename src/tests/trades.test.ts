@@ -63,25 +63,63 @@ describe('Testing Trades', () => {
   });
 
   describe('[POST] /trades/load', () => {
-    it('response Create Trade', async () => {
-      const tradeData: CreateTradeDto = {
+    it('response Creates and Analyses Trade', async () => {
+      const tradeData = {
         "symbol": "BTCUSDT",
         "periodStart": 1757004127926,
       };
 
-      const tradesRoute = new TradesRoute();
-      const trades = tradesRoute.tradesController.tradeService.trades;
+      const mockedTrades = [
+        {
+          "a": 26129,
+          "p": "12623.14000000",
+          "q": "0.05329300",
+          "f": 26128,
+          "l": 26129,
+          "T": 1757004127916,
+          "m": true,
+          "M": true
+        },
+        {
+          "a": 26130,
+          "p": "42623.14000000",
+          "q": "0.05329300",
+          "f": 26128,
+          "l": 26129,
+          "T": 1757004127926,
+          "m": true,
+          "M": true
+        },
+        {
+          "a": 26131,
+          "p": "32623.14000000",
+          "q": "0.05329300",
+          "f": 26128,
+          "l": 26129,
+          "T": 1757004127326,
+          "m": true,
+          "M": true
+        }
+      ]
 
-      trades.findOne = jest.fn().mockReturnValue(null);
-      trades.create = jest.fn().mockReturnValue({
-        _id: '60706478aad6c9ad19a31c84',
-        email: tradeData.email,
-        password: await bcrypt.hash(tradeData.password, 10),
-      });
+      const tradesRoute = new TradesRoute();
+      const tradesService = tradesRoute.tradesController.tradeService;
+
+      tradesService.loadBySymbolAndPeriod = jest.fn().mockReturnValue(mockedTrades);
+      tradesService.bulkCreateTrade = jest.fn().mockReturnValue(mockedTrades);
+      tradesService.analyzeTrades = jest.fn();
 
       (mongoose as any).connect = jest.fn();
+
       const app = new App([tradesRoute]);
-      return request(app.getServer()).post(`${tradesRoute.path}`).send(tradeData).expect(201);
+      const response = request(app.getServer()).post(`${tradesRoute.path}/load`).send(tradeData).expect(200);
+      await response;
+
+      expect(tradesService.loadBySymbolAndPeriod).toBeCalledWith(tradeData.symbol, tradeData.periodStart, undefined);
+      expect(tradesService.analyzeTrades).toBeCalledWith(mockedTrades);
+      expect(tradesService.bulkCreateTrade).toBeCalledWith(mockedTrades);
+
+      return response
     });
   });
 });
