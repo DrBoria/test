@@ -1,10 +1,11 @@
 export interface Trade {
   _id: string;
-  externalId: number,
-  price: number,
-  qty: number,
-  quoteQty: number,
-  time: number,
-  isBuyerMaker: boolean,
-  isBestMatch: boolean,
+  a: number,
+  p: string, // Price
+  q: string,
+  f: number,
+  l: number,
+  T: number,
+  m: boolean,
+  M: boolean,
 }

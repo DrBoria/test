@@ -24,58 +24,86 @@ class TradeService {
     return findTrade;
   }
 
-  public async loadTrades(symbol: string, limit: number, fromId: number): Promise<Trade[]> {
-    const historicalTradesResponse: { data: Trade[] } = await axios.get(`${BINANCE_API_KEY}/historicalTrades`, {
+  public async getServerTime() {
+    const serverTimeResponse = await axios.get(`${BINANCE_API_KEY}/time`);
+    return serverTimeResponse.data.serverTime;
+  }
+
+
+  public analyzeTrades(trades: Trade[]): { change: number, changePercent: string | number } {
+    if (trades.length < 2) {
+      return { change: 0, changePercent: 0 }
+    }
+
+    const firstPrice = parseFloat(trades[0].p);
+    const lastPrice = parseFloat(trades[trades.length - 1].p);
+
+    const change = lastPrice - firstPrice;
+    const changePercent = ((change / firstPrice) * 100).toFixed(2);
+
+    return { change, changePercent }
+  }
+
+  public async loadAggTrades(symbol: string, fromId: number, startTime: number, endTime: number, limit: number): Promise<Trade[]> {
+    const aggTradesResponse: { data: Trade[] } = await axios.get(`${BINANCE_API_KEY}/aggTrades`, {
       params: {
         symbol,
         limit,
-        fromId,
+        ...(fromId ? { fromId } : { startTime, endTime }),
       },
     });
 
-    if (!historicalTradesResponse?.data) {
+    if (!aggTradesResponse?.data) {
       throw new HttpException(409, `Historical trades not found for provided symbol: ${symbol}`);
     }
 
-    return historicalTradesResponse.data;
+    return aggTradesResponse.data;
   }
 
   public async loadBySymbolAndPeriod(symbol: string, periodStart?: number, periodEnd?: number): Promise<Trade[]> {
-    const historicalTradesResponse: { data: Trade[] } = await axios.get(`${BINANCE_API_KEY}/historicalTrades`, {
-      params: {
-        symbol,
-        startTime: periodStart,
-        endTime: periodEnd,
-      },
-    });
+    let historicalTrades = [];
+    let fromId;
+    const limit = 1000;
+    const serverTime = await this.getServerTime();
+    const minEndTime = periodEnd ? Math.min(periodEnd, serverTime) : serverTime;
 
-    if (!historicalTradesResponse?.data) {
+    if (periodStart > serverTime) {
+      throw new HttpException(400, "period is in the future");
+    }
+
+    while (true) {
+      const trades = await this.loadAggTrades(symbol, fromId, periodStart, minEndTime, limit);
+      if (!trades.length) {
+        break;
+      }
+      const filteredTrades = trades.filter((trade) => trade.T >= periodStart && trade.T <= minEndTime);
+
+      historicalTrades.push(...filteredTrades);
+
+      const oldestTradeTime = trades[0].T;
+      if (oldestTradeTime <= periodStart || trades.length < limit) {
+        break;
+      }
+
+      fromId = trades[0].a - 1;
+    }
+
+
+    if (!historicalTrades) {
       throw new HttpException(409, `Historical trades not found for provided symbol: ${symbol}`);
     }
 
-    return historicalTradesResponse.data;
-  }
-
-  public async createTrade(tradeData: CreateTradeDto): Promise<Trade> {
-    if (isEmpty(tradeData)) throw new HttpException(400, "tradeData is empty");
-
-    const findTrade: Trade = await this.trades.findOne({ email: tradeData.email });
-    if (findTrade) throw new HttpException(409, `This email ${tradeData.email} already exists`);
-
-    const hashedPassword = await hash(tradeData.password, 10);
-    const createTradeData: Trade = await this.trades.create({ ...tradeData, password: hashedPassword });
-
-    return createTradeData;
+    return historicalTrades;
   }
 
   public async bulkCreateTrade(tradeData: CreateTradeDto[]): Promise<Trade[]> {
     if (isEmpty(tradeData)) throw new HttpException(400, "tradeData is empty");
 
     let newTradingData = tradeData;
-    const findExisting: Trade[] = await this.trades.find({ externalId: { $in: tradeData.map((item) => item.externalId) } });
+    const findExisting: Trade[] = await this.trades.find({ a: { $in: tradeData.map((item) => item.a) } });
 
     if (findExisting.length) {
-      newTradingData = tradeData.filter((tradeData) => !findExisting.find((item) => item.externalId === tradeData.externalId));
+      newTradingData = tradeData.filter((tradeData) => !findExisting.find((item) => item.a === tradeData.a));
     }
 
     const createdTradingData = this.trades.insertMany(newTradingData);
@@ -83,31 +111,6 @@ class TradeService {
     return createdTradingData;
   }
 
-  public async updateTrade(tradeId: string, tradeData: CreateTradeDto): Promise<Trade> {
-    if (isEmpty(tradeData)) throw new HttpException(400, "tradeData is empty");
-
-    if (tradeData.email) {
-      const findTrade: Trade = await this.trades.findOne({ email: tradeData.email });
-      if (findTrade && findTrade._id != tradeId) throw new HttpException(409, `This email ${tradeData.email} already exists`);
-    }
-
-    if (tradeData.password) {
-      const hashedPassword = await hash(tradeData.password, 10);
-      tradeData = { ...tradeData, password: hashedPassword };
-    }
-
-    const updateTradeById: Trade = await this.trades.findByIdAndUpdate(tradeId, { tradeData });
-    if (!updateTradeById) throw new HttpException(409, "Trade doesn't exist");
-
-    return updateTradeById;
-  }
-
-  public async deleteTrade(tradeId: string): Promise<Trade> {
-    const deleteTradeById: Trade = await this.trades.findByIdAndDelete(tradeId);
-    if (!deleteTradeById) throw new HttpException(409, "Trade doesn't exist");
-
-    return deleteTradeById;
-  }
 }
 
 export default TradeService;

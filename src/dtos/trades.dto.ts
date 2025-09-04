@@ -1,18 +1,20 @@
-import { IsBoolean, IsEmail, IsNumber, IsString } from 'class-validator';
+import { IsBoolean, IsNumber, IsString } from 'class-validator';
 
 export class CreateTradeDto {
   @IsNumber()
-  public externalId: number;
+  public a: number;
+  @IsString()
+  public p: string;
+  @IsString()
+  public q: string;
   @IsNumber()
-  public price: number;
+  public f: number;
   @IsNumber()
-  public qty: number;
+  public l: number;
   @IsNumber()
-  public quoteQty: number;
-  @IsNumber()
-  public time: number;
+  public T: number;
   @IsBoolean()
-  public isBuyerMaker: boolean;
+  public m: boolean;
   @IsBoolean()
-  public isBestMatch: boolean;
+  public M: boolean;
 }
